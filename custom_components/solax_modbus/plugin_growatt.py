@@ -1147,6 +1147,41 @@ NUMBER_TYPES = [
         entity_registry_enabled_default = False,
         entity_category = EntityCategory.CONFIG,
     ),
+    ###
+    # Remote Power Control (VPP Protocol V2.01)
+    # Register 30407-30474 for battery charge/discharge control
+    ###
+    GrowattModbusNumberEntityDescription(
+        name = "Remote Control Duration",
+        key = "remote_control_duration",
+        register = 408,
+        unit = REGISTER_U16,
+        native_min_value = 0,
+        native_max_value = 1440,
+        native_step = 1,
+        fmt = "i",
+        native_unit_of_measurement = UnitOfTime.MINUTES,
+        allowedtypes = ALL_GEN_GROUP,
+        write_method = WRITE_SINGLE_MODBUS,
+        icon = "mdi:timer-outline",
+        entity_registry_enabled_default = False,
+        entity_category = EntityCategory.CONFIG,
+    ),
+    GrowattModbusNumberEntityDescription(
+        name = "Remote Charge/Discharge Power",
+        key = "remote_charge_discharge_power",
+        register = 409,
+        unit = REGISTER_S16,
+        native_min_value = -100,
+        native_max_value = 100,
+        native_step = 1,
+        fmt = "i",
+        native_unit_of_measurement = PERCENTAGE,
+        allowedtypes = ALL_GEN_GROUP,
+        write_method = WRITE_SINGLE_MODBUS,
+        icon = "mdi:battery-sync",
+        entity_registry_enabled_default = False,
+    ),
 ]
 
 # ================================= Select Declarations ============================================================
@@ -2286,6 +2321,22 @@ SELECT_TYPES = [
         allowedtypes = SPF,
         entity_category = EntityCategory.CONFIG,
         icon = "mdi:dip-switch",
+    ),
+    ###
+    # Remote Power Control Enable (VPP Protocol V2.01)
+    # Register 30407 - enables remote charge/discharge control
+    ###
+    GrowattModbusSelectEntityDescription(
+        name = "Remote Power Control",
+        key = "remote_power_control_enable",
+        register = 407,
+        option_dict = {
+                0: "Disabled",
+                1: "Enabled",
+            },
+        allowedtypes = ALL_GEN_GROUP,
+        icon = "mdi:remote",
+        entity_registry_enabled_default = False,
     ),
 ]
 
@@ -4508,6 +4559,21 @@ SENSOR_TYPES: list[GrowattModbusSensorEntityDescription] = [
         depends_on = ("battery_charge_power", "battery_discharge_power",),
         allowedtypes = HYBRID | GEN3 | GEN4,
         icon = "mdi:battery",
+    ),
+    ###
+    # Remote Power Control Actual Value (VPP Protocol V2.01)
+    # Register 30474 - read-only sensor showing actual remote control power value
+    ###
+    GrowattModbusSensorEntityDescription(
+        name = "Remote Control Actual Power",
+        key = "remote_control_actual_power",
+        native_unit_of_measurement = PERCENTAGE,
+        unit = REGISTER_S16,
+        register = 474,
+        register_type = REG_HOLDING,
+        allowedtypes = ALL_GEN_GROUP,
+        entity_registry_enabled_default = False,
+        icon = "mdi:battery-sync-outline",
     ),
     GrowattModbusSensorEntityDescription(
         name = "Battery SOC",
