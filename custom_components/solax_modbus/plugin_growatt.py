@@ -537,6 +537,39 @@ def value_function_time_9_reverse_mode(initval, descr, datadict):
     else:
         return "Load First"
 
+# ====================================== VPP Remote Power Control Functions  =================================================
+
+def value_function_vpp_control_update(initval, descr, datadict):
+    """Write VPP remote control registers 407-410"""
+    remote_power_control = datadict.get('vpp_remote_power_control', 'Disabled')
+    remote_duration = datadict.get('vpp_remote_control_duration', 0)
+    remote_power = datadict.get('vpp_remote_charge_discharge_power', 0)
+
+    _LOGGER.debug(f"VPP: enable={remote_power_control}, duration={remote_duration}, power={remote_power}")
+
+    enable_value = 1 if remote_power_control == 'Enabled' else 0
+
+    return [
+        (REGISTER_U16, enable_value),           # Register 407: Enable/Disable
+        (REGISTER_U16, int(remote_duration)),   # Register 408: Duration in minutes
+        (REGISTER_S16, int(remote_power)),      # Register 409: Power % (signed)
+        (REGISTER_U16, 1),                      # Register 410: Unknown (always 1 from your tests)
+    ]
+
+def value_function_vpp_control_clear(initval, descr, datadict):
+    """Clear VPP remote control registers 407-410"""
+    return [
+        (REGISTER_U16, 0),  # Register 407: Disabled
+        (REGISTER_U16, 0),  # Register 408: 0 minutes
+        (REGISTER_S16, 0),  # Register 409: 0%
+        (REGISTER_U16, 0),  # Register 410: 0
+    ]
+
+def value_function_vpp_remote_power_control_read(initval, descr, datadict):
+    """Read VPP remote power control enable status from register 407"""
+    value = datadict.get('register_407', 0)
+    return "Enabled" if int(value) == 1 else "Disabled"
+
 def value_function_today_s_solar_energy(initval, descr, datadict):
     return  datadict.get('today_s_pv1_solar_energy', 0) + datadict.get('today_s_pv2_solar_energy',0) + datadict.get('today_s_pv3_solar_energy',0) + datadict.get('today_s_pv4_solar_energy',0)
 
@@ -783,6 +816,29 @@ BUTTON_TYPES = [
         write_method=WRITE_MULTI_MODBUS,
         icon="mdi:numeric-1-circle",
         value_function=value_function_time_1_update,
+    ),
+    ###
+    # VPP Remote Power Control Buttons (VPP Protocol V2.01)
+    ###
+    GrowattModbusButtonEntityDescription(
+        name="VPP Control Update",
+        key="vpp_control_update",
+        register=407,
+        allowedtypes=ALL_GEN_GROUP,
+        write_method=WRITE_MULTI_MODBUS,
+        icon="mdi:upload",
+        value_function=value_function_vpp_control_update,
+        entity_registry_enabled_default=False,
+    ),
+    GrowattModbusButtonEntityDescription(
+        name="VPP Control Clear",
+        key="vpp_control_clear",
+        register=407,
+        allowedtypes=ALL_GEN_GROUP,
+        write_method=WRITE_MULTI_MODBUS,
+        icon="mdi:eraser",
+        value_function=value_function_vpp_control_clear,
+        entity_registry_enabled_default=False,
     ),
     GrowattModbusButtonEntityDescription(
         name="Time 2 Update",
@@ -1148,39 +1204,34 @@ NUMBER_TYPES = [
         entity_category = EntityCategory.CONFIG,
     ),
     ###
-    # Remote Power Control (VPP Protocol V2.01)
-    # Register 30407-30474 for battery charge/discharge control
+    # VPP Remote Power Control (VPP Protocol V2.01)
+    # Local settings - use "VPP Control Update" button to commit to inverter
     ###
     GrowattModbusNumberEntityDescription(
-        name = "Remote Control Duration",
-        key = "remote_control_duration",
-        register = 408,
-        unit = REGISTER_U16,
+        name = "VPP Remote Control Duration",
+        key = "vpp_remote_control_duration",
         native_min_value = 0,
         native_max_value = 1440,
         native_step = 1,
-        fmt = "i",
         native_unit_of_measurement = UnitOfTime.MINUTES,
         allowedtypes = ALL_GEN_GROUP,
-        write_method = WRITE_SINGLE_MODBUS,
+        write_method = WRITE_DATA_LOCAL,
         icon = "mdi:timer-outline",
         entity_registry_enabled_default = False,
         entity_category = EntityCategory.CONFIG,
     ),
     GrowattModbusNumberEntityDescription(
-        name = "Remote Charge/Discharge Power",
-        key = "remote_charge_discharge_power",
-        register = 409,
-        unit = REGISTER_S16,
+        name = "VPP Remote Charge/Discharge Power",
+        key = "vpp_remote_charge_discharge_power",
         native_min_value = -100,
         native_max_value = 100,
         native_step = 1,
-        fmt = "i",
         native_unit_of_measurement = PERCENTAGE,
         allowedtypes = ALL_GEN_GROUP,
-        write_method = WRITE_SINGLE_MODBUS,
+        write_method = WRITE_DATA_LOCAL,
         icon = "mdi:battery-sync",
         entity_registry_enabled_default = False,
+        entity_category = EntityCategory.CONFIG,
     ),
 ]
 
@@ -2323,20 +2374,39 @@ SELECT_TYPES = [
         icon = "mdi:dip-switch",
     ),
     ###
-    # Remote Power Control Enable (VPP Protocol V2.01)
-    # Register 30407 - enables remote charge/discharge control
+    # VPP Protocol V2.01 - Control Authority (Register 30100)
+    # Must be enabled before remote power control works
     ###
     GrowattModbusSelectEntityDescription(
-        name = "Remote Power Control",
-        key = "remote_power_control_enable",
-        register = 407,
+        name = "VPP Control Authority",
+        key = "vpp_control_authority",
+        register = 100,
         option_dict = {
                 0: "Disabled",
                 1: "Enabled",
             },
         allowedtypes = ALL_GEN_GROUP,
+        write_method = WRITE_MULTISINGLE_MODBUS,
+        icon = "mdi:shield-key",
+        entity_registry_enabled_default = False,
+        entity_category = EntityCategory.CONFIG,
+    ),
+    ###
+    # VPP Remote Power Control Enable (VPP Protocol V2.01)
+    # Local setting - use "VPP Control Update" button to commit to register 30407
+    ###
+    GrowattModbusSelectEntityDescription(
+        name = "VPP Remote Power Control",
+        key = "vpp_remote_power_control",
+        option_dict = {
+                0: "Disabled",
+                1: "Enabled",
+            },
+        allowedtypes = ALL_GEN_GROUP,
+        write_method = WRITE_DATA_LOCAL,
         icon = "mdi:remote",
         entity_registry_enabled_default = False,
+        entity_category = EntityCategory.CONFIG,
     ),
 ]
 
@@ -3077,6 +3147,42 @@ SENSOR_TYPES: list[GrowattModbusSensorEntityDescription] = [
         key = "ems_discharging_stop_soc_on_grid",
         register = 3067, #requires newer firmware
         allowedtypes = HYBRID | GEN4,
+        internal = True,
+    ),
+    ###
+    # VPP Control Authority internal sensor (register 100)
+    ###
+    GrowattModbusSensorEntityDescription(
+        key = "vpp_control_authority",
+        register = 100,
+        scale = {
+                0: "Disabled",
+                1: "Enabled",
+            },
+        allowedtypes = ALL_GEN_GROUP,
+        internal = True,
+    ),
+    ###
+    # VPP Remote Power Control internal register sensors (for value_function)
+    # These allow the read-only sensors to access the raw register values
+    ###
+    GrowattModbusSensorEntityDescription(
+        key = "register_407",
+        register = 407,
+        allowedtypes = ALL_GEN_GROUP,
+        internal = True,
+    ),
+    GrowattModbusSensorEntityDescription(
+        key = "register_408",
+        register = 408,
+        allowedtypes = ALL_GEN_GROUP,
+        internal = True,
+    ),
+    GrowattModbusSensorEntityDescription(
+        key = "register_409",
+        register = 409,
+        unit = REGISTER_S16,
+        allowedtypes = ALL_GEN_GROUP,
         internal = True,
     ),
     GrowattModbusSensorEntityDescription(
@@ -4561,18 +4667,49 @@ SENSOR_TYPES: list[GrowattModbusSensorEntityDescription] = [
         icon = "mdi:battery",
     ),
     ###
-    # Remote Power Control Actual Value (VPP Protocol V2.01)
-    # Register 30474 - read-only sensor showing actual remote control power value
+    # VPP Remote Power Control Read-Only Sensors (VPP Protocol V2.01)
+    # Show actual values from registers 407-409, 474
     ###
     GrowattModbusSensorEntityDescription(
-        name = "Remote Control Actual Power",
-        key = "remote_control_actual_power",
+        name = "VPP Remote Power Control (read)",
+        key = "vpp_remote_power_control_read",
+        value_function = value_function_vpp_remote_power_control_read,
+        allowedtypes = ALL_GEN_GROUP,
+        entity_registry_enabled_default = False,
+        entity_category = EntityCategory.DIAGNOSTIC,
+        icon = "mdi:remote",
+    ),
+    GrowattModbusSensorEntityDescription(
+        name = "VPP Remote Control Duration (read)",
+        key = "vpp_remote_control_duration_read",
+        register = 408,
+        native_unit_of_measurement = UnitOfTime.MINUTES,
+        allowedtypes = ALL_GEN_GROUP,
+        entity_registry_enabled_default = False,
+        entity_category = EntityCategory.DIAGNOSTIC,
+        icon = "mdi:timer-outline",
+    ),
+    GrowattModbusSensorEntityDescription(
+        name = "VPP Remote Charge/Discharge Power (read)",
+        key = "vpp_remote_charge_discharge_power_read",
+        register = 409,
+        unit = REGISTER_S16,
+        native_unit_of_measurement = PERCENTAGE,
+        allowedtypes = ALL_GEN_GROUP,
+        entity_registry_enabled_default = False,
+        entity_category = EntityCategory.DIAGNOSTIC,
+        icon = "mdi:battery-sync",
+    ),
+    GrowattModbusSensorEntityDescription(
+        name = "VPP Remote Control Actual Power",
+        key = "vpp_remote_control_actual_power",
         native_unit_of_measurement = PERCENTAGE,
         unit = REGISTER_S16,
         register = 474,
         register_type = REG_HOLDING,
         allowedtypes = ALL_GEN_GROUP,
         entity_registry_enabled_default = False,
+        entity_category = EntityCategory.DIAGNOSTIC,
         icon = "mdi:battery-sync-outline",
     ),
     GrowattModbusSensorEntityDescription(
